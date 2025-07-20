@@ -7,7 +7,6 @@ view.
 - 👤 User Management
 - 📋 Task Creation & Assignment
 - ✏️ Task Update and Delete
-- 📊 Dashboard for Assigned Tasks
 - 🗄️ PostgreSQL Integration
 - 📡 RESTful API Architecture
 ## 🛠️ Tech Stack
