@@ -8,48 +8,82 @@ routes = Blueprint('routes', __name__)
 @routes.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
+
+    username = data.get('cms_username')
+    password = data.get('cms_password')
+
+    if not username or not password:
+        return jsonify({"msg": "Username and password are required"}), 400
 
     conn, cursor = get_db_connection()
     if not conn:
-        return jsonify({"msg": "Database connection error"}), 500
+        return jsonify({"msg": "Database connection failed"}), 500
 
-    cursor.execute("SELECT cmi_emp_id, cms_password FROM tbl_login WHERE cms_username = %s", (username,))
-    user = cursor.fetchone()
+    try:
+        query = """
+            SELECT * FROM tbl_login WHERE cms_username = %s AND cms_password = %s
+        """
+        cursor.execute(query, (username, password))
+        user = cursor.fetchone()
 
-    cursor.close()
-    conn.close()
+        if user:
+            access_token = create_access_token(identity=username)
+            return jsonify({"access_token": access_token}), 200
+        else:
+            return jsonify({"msg": "Invalid credentials"}), 401
+    except Exception as e:
+        return jsonify({"msg": f"Database error: {str(e)}"}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
-    if user and password == user[1]:
-        access_token = create_access_token(identity=str(user[0]))
-        return jsonify(access_token=access_token), 200
-    else:
-        return jsonify({"msg": "Invalid credentials"}), 401
-
-
-#  (Protected Route)
-@routes.route('/tasks/assigned', methods=['POST'])
+# MY TASKS ROUTE
+@routes.route('/my-tasks', methods=['POST'])
 @jwt_required()
-def get_assigned_tasks():
-    emp_id = int(get_jwt_identity())  # Fetch from token
+def get_user_tasks_post():
+    current_user = get_jwt_identity()  # cms_username
 
     conn, cursor = get_db_connection()
     if not conn:
-        return jsonify({"msg": "Database connection error"}), 500
+        return jsonify({"msg": "Database connection failed"}), 500
 
-    cursor.execute(
-        "SELECT cms_task_title, cms_task_desc FROM tbl_task WHERE cmi_allocated_to = %s",
-        (emp_id,)
-    )
-    tasks = cursor.fetchall()
+    try:
+        # Step 1: Get emp_id of current user from tbl_login
+        cursor.execute("SELECT cmi_emp_id FROM tbl_login WHERE cms_username = %s", (current_user,))
+        emp_result = cursor.fetchone()
 
-    cursor.close()
-    conn.close()
+        if not emp_result:
+            return jsonify({"msg": "User not found"}), 404
 
-    if tasks:
-        task_list = [{"title": t[0], "description": t[1]} for t in tasks]
-        return jsonify({"emp_id": emp_id, "assigned_tasks": task_list}), 200
-    else:
-        return jsonify({"msg": f"No tasks found for employee ID: {emp_id}"}), 404
+        emp_id = emp_result[0]  # cmi_emp_id
 
+        # Step 2: Fetch tasks assigned to this emp_id
+        cursor.execute("""
+            SELECT cmi_task_id, cms_task_desc, cms_task_title
+            FROM tbl_task
+            WHERE cmi_allocated_to = %s
+        """, (emp_id,))
+        tasks = cursor.fetchall()
+
+        if not tasks:
+            return jsonify({"msg": "No tasks found for user"}), 404
+
+        task_list = []
+        for task in tasks:
+            task_list.append({
+                "task_id": task[0],
+                "task_desc": task[1],
+                "task_title": task[2]
+            })
+
+        return jsonify({"tasks": task_list}), 200
+
+    except Exception as e:
+        return jsonify({"msg": f"Database error: {str(e)}"}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
