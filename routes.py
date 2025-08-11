@@ -7,6 +7,45 @@ routes = Blueprint('routes', __name__)
 # LOGIN ROUTE
 @routes.route('/login', methods=['POST'])
 def login():
+    """
+    User Login
+    ---
+    tags:
+      - Authentication
+    consumes:
+      - application/json
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - cms_username
+            - cms_password
+          properties:
+            cms_username:
+              type: string
+              example: deepali
+            cms_password:
+              type: string
+              example: mypassword
+    responses:
+      200:
+        description: Login successful
+        schema:
+          type: object
+          properties:
+            access_token:
+              type: string
+              example: "eyJ0eXAiOiJKV1QiLCJhbGciOi..."
+      400:
+        description: Missing username or password
+      401:
+        description: Invalid credentials
+      500:
+        description: Database error
+    """
     data = request.get_json()
 
     username = data.get('cms_username')
@@ -39,10 +78,45 @@ def login():
         if conn:
             conn.close()
 
+
 # MY TASKS ROUTE
 @routes.route('/my-tasks', methods=['POST'])
 @jwt_required()
 def get_user_tasks_post():
+    """
+    Get tasks assigned to the logged-in user
+    ---
+    tags:
+      - Tasks
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: List of tasks assigned to the user
+        schema:
+          type: object
+          properties:
+            tasks:
+              type: array
+              items:
+                type: object
+                properties:
+                  task_id:
+                    type: integer
+                    example: 1
+                  task_desc:
+                    type: string
+                    example: "Complete backend API integration"
+                  task_title:
+                    type: string
+                    example: "Backend API"
+      401:
+        description: Unauthorized - missing or invalid token
+      404:
+        description: No tasks found for user
+      500:
+        description: Database error
+    """
     current_user = get_jwt_identity()  # cms_username
 
     conn, cursor = get_db_connection()
@@ -87,3 +161,4 @@ def get_user_tasks_post():
             cursor.close()
         if conn:
             conn.close()
+
