@@ -1,8 +1,10 @@
-Flask==2.3.3
+Flask==2.2.5
 flask-jwt-extended==4.6.0
 python-dotenv==1.0.1
 PyJWT==2.8.0
 pycryptodome==3.20.0
 psycopg2-binary==2.9.9
 cryptography==41.0.7
+gunicorn
+flasgger==0.9.7.1
 
