@@ -4,6 +4,21 @@ from config_db import get_db_connection
 
 routes = Blueprint('routes', __name__)
 
+# HOME ROUTE
+@routes.route('/')
+def home():
+    """
+    Welcome Route
+    ---
+    tags:
+      - Home
+    responses:
+      200:
+        description: Welcome message for Task Management API
+    """
+    return jsonify({"message": "Welcome to the Task Management API 🚀"}), 200
+
+
 # LOGIN ROUTE
 @routes.route('/login', methods=['POST'])
 def login():
