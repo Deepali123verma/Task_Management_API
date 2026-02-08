@@ -1,53 +1,54 @@
 import os
 import psycopg2
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from flask_sqlalchemy import SQLAlchemy
 
-# Load .env variables
+# Load environment variables
 load_dotenv()
+
+db = SQLAlchemy()
 
 
 class Config:
-    # Secret Key (used in session or fallback)
     SECRET_KEY = os.getenv("SECRET_KEY", "deepali_secret")
 
     # JWT Configuration
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "RS256")
-
-    private_key_path = os.getenv("JWT_PRIVATE_KEY_PATH", "private.pem")
-    public_key_path = os.getenv("JWT_PUBLIC_KEY_PATH", "public.pem")
+    JWT_PRIVATE_KEY_PATH = os.getenv("JWT_PRIVATE_KEY_PATH", "private.pem")
+    JWT_PUBLIC_KEY_PATH = os.getenv("JWT_PUBLIC_KEY_PATH", "public.pem")
 
     # Safely load private/public keys
     try:
-        with open(private_key_path, "r") as f:
+        with open(JWT_PRIVATE_KEY_PATH, "r") as f:
             JWT_PRIVATE_KEY = f.read()
     except FileNotFoundError:
         JWT_PRIVATE_KEY = None
-        print(f"[ERROR] Private key file not found at {private_key_path}")
+        print(f"[ERROR] Private key file not found at {JWT_PRIVATE_KEY_PATH}")
 
     try:
-        with open(public_key_path, "r") as f:
+        with open(JWT_PUBLIC_KEY_PATH, "r") as f:
             JWT_PUBLIC_KEY = f.read()
     except FileNotFoundError:
         JWT_PUBLIC_KEY = None
-        print(f"[ERROR] Public key file not found at {public_key_path}")
+        print(f"[ERROR] Public key file not found at {JWT_PUBLIC_KEY_PATH}")
 
-    # Database configuration (fallback to PG* if DB_* not found)
-    DB_HOST = os.getenv("DB_HOST", os.getenv("PGHOST", "localhost"))
-    DB_NAME = os.getenv("DB_NAME", os.getenv("PGDATABASE", "tm"))
-    DB_USER = os.getenv("DB_USER", os.getenv("PGUSER", "postgres"))
-    DB_PASSWORD = os.getenv("DB_PASSWORD", os.getenv("PGPASSWORD", "postgres"))
-    DB_PORT = os.getenv("DB_PORT", os.getenv("PGPORT", "5432"))
+    # DATABASE_URL from Render env
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
+
+    # SSL required for Render Postgres
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URI,
+        connect_args={"sslmode": "require"}
+    )
 
 
-# DB Connection Function
 def get_db_connection():
+    """Direct psycopg2 connection (optional for raw SQL queries)"""
     try:
         conn = psycopg2.connect(
-            host=Config.DB_HOST,
-            database=Config.DB_NAME,
-            user=Config.DB_USER,
-            password=Config.DB_PASSWORD,
-            port=Config.DB_PORT
+            os.getenv("DATABASE_URL"),
+            sslmode="require"
         )
         cursor = conn.cursor()
         return conn, cursor
