@@ -1,6 +1,6 @@
 from flask import Flask
 from flask_jwt_extended import JWTManager
-from config_db import Config
+from config_db import Config, db
 from routes import routes
 from flasgger import Swagger
 
@@ -13,10 +13,14 @@ app.config["JWT_PUBLIC_KEY"] = Config.JWT_PUBLIC_KEY
 
 jwt = JWTManager(app)
 
+# SQLAlchemy Configuration
+app.config["SQLALCHEMY_DATABASE_URI"] = Config.SQLALCHEMY_DATABASE_URI
+db.init_app(app)
+
 # Swagger Configuration
 swagger_template = {
     "info": {
-        "title": "Task Management API",
+        "title": "Task Management REST API",
         "description": "API documentation for the Task Management project with JWT authentication, role-based authorization, and encryption.",
         "version": "1.0.0",
     },
@@ -36,5 +40,6 @@ swagger = Swagger(app, template=swagger_template)
 # Register routes
 app.register_blueprint(routes)
 
-if __name__ == '__main__':  # fixed from '_main_' to '__main__'
+if __name__ == '__main__':
     app.run(debug=True)
+True)
