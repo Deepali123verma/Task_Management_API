@@ -8,3 +8,4 @@ cryptography==41.0.7
 gunicorn
 flasgger==0.9.7.1
 SQLAlchemy==2.0.22
+Flask-SQLAlchemy==3.0.5
