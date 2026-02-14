@@ -17,6 +17,8 @@ jwt = JWTManager(app)
 app.config["SQLALCHEMY_DATABASE_URI"] = Config.SQLALCHEMY_DATABASE_URI
 db.init_app(app)
 
+with app.app_context():
+    db.create_all()
 # Swagger Configuration
 swagger_template = {
     "info": {
