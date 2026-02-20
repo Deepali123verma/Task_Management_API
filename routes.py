@@ -18,10 +18,43 @@ def home():
         description: Welcome message for Task Management API
     """
     return jsonify({"message": "Welcome to the Task Management API 🚀"}), 200
-#LOGIN ROUTE
+
 
 @routes.route('/login', methods=['POST'])
 def login():
+    """
+    User Login
+    ---
+    tags:
+      - Authentication
+    consumes:
+      - application/json
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - cms_username
+            - cms_password
+          properties:
+            cms_username:
+              type: string
+              example: admin
+            cms_password:
+              type: string
+              example: Admin123
+    responses:
+      200:
+        description: Successful login
+      400:
+        description: Username and password required
+      401:
+        description: Invalid credentials
+      500:
+        description: Server error
+    """
     data = request.get_json()
 
     username = data.get('cms_username')
@@ -35,19 +68,22 @@ def login():
         return jsonify({"msg": "Database connection failed"}), 500
 
     try:
-        # STEP 1: Get user by username only
-        query = "SELECT * FROM tbl_login WHERE cms_username = %s"
+        # ✅ Fetch only the password column for the given username
+        query = "SELECT cms_password FROM tbl_login WHERE cms_username = %s"
         cursor.execute(query, (username,))
-        user = cursor.fetchone()
+        result = cursor.fetchone()
 
-        if not user:
+        if not result:
             return jsonify({"msg": "Invalid credentials"}), 401
 
-        # adjust index according to your table
-        stored_password = user[2]  # ⚠️ change index if needed
+        stored_password = result[0]
 
-        # STEP 2: Compare using bcrypt
-        if bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
+        # Handle string vs bytea (PostgreSQL may store as BYTEA)
+        if isinstance(stored_password, str):
+            stored_password = stored_password.encode('utf-8')
+
+        # Check password using bcrypt
+        if bcrypt.checkpw(password.encode('utf-8'), stored_password):
             access_token = create_access_token(identity=username)
             return jsonify({"access_token": access_token}), 200
         else:
@@ -61,8 +97,6 @@ def login():
             cursor.close()
         if conn:
             conn.close()
-
-
 # MY TASKS ROUTE
 @routes.route('/my-tasks', methods=['GET'])
 @jwt_required()
