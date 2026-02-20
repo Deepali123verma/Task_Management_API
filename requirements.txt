@@ -9,3 +9,5 @@ gunicorn
 flasgger==0.9.7.1
 SQLAlchemy==2.0.22
 Flask-SQLAlchemy==3.0.5
+bcrypt==4.1.2
+
