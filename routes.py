@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from config_db import get_db_connection
+import bcrypt
 
 routes = Blueprint('routes', __name__)
 
@@ -17,44 +18,10 @@ def home():
         description: Welcome message for Task Management API
     """
     return jsonify({"message": "Welcome to the Task Management API 🚀"}), 200
+#LOGIN ROUTE
 
-
-# LOGIN ROUTE
 @routes.route('/login', methods=['POST'])
 def login():
-    """
-    User Login
-    ---
-    tags:
-      - Authentication
-    consumes:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - cms_username
-            - cms_password
-          properties:
-            cms_username:
-              type: string
-              example: deepali
-            cms_password:
-              type: string
-              example: mypassword
-    responses:
-      200:
-        description: Login successful
-      400:
-        description: Missing username or password
-      401:
-        description: Invalid credentials
-      500:
-        description: Database error
-    """
     data = request.get_json()
 
     username = data.get('cms_username')
@@ -68,19 +35,27 @@ def login():
         return jsonify({"msg": "Database connection failed"}), 500
 
     try:
-        query = """
-            SELECT * FROM tbl_login WHERE cms_username = %s AND cms_password = %s
-        """
-        cursor.execute(query, (username, password))
+        # STEP 1: Get user by username only
+        query = "SELECT * FROM tbl_login WHERE cms_username = %s"
+        cursor.execute(query, (username,))
         user = cursor.fetchone()
 
-        if user:
+        if not user:
+            return jsonify({"msg": "Invalid credentials"}), 401
+
+        # adjust index according to your table
+        stored_password = user[2]  # ⚠️ change index if needed
+
+        # STEP 2: Compare using bcrypt
+        if bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
             access_token = create_access_token(identity=username)
             return jsonify({"access_token": access_token}), 200
         else:
             return jsonify({"msg": "Invalid credentials"}), 401
+
     except Exception as e:
-        return jsonify({"msg": f"Database error: {str(e)}"}), 500
+        return jsonify({"msg": f"Server error: {str(e)}"}), 500
+
     finally:
         if cursor:
             cursor.close()
