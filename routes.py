@@ -129,9 +129,9 @@ def register():
         conn.close()
 
 # =====================================================
+ =====================================================
 # LOGIN ROUTE
 # =====================================================
-
 @routes.route('/login', methods=['POST'])
 def login():
     """
@@ -139,11 +139,9 @@ def login():
     ---
     tags:
       - Authentication
-    consumes:
-      - application/json
     parameters:
-      - in: body
-        name: body
+      - name: body
+        in: body
         required: true
         schema:
           type: object
@@ -153,17 +151,17 @@ def login():
           properties:
             cms_username:
               type: string
-              example: deepali123
+              example: Rahul
             cms_password:
               type: string
-              example: MyPassword@123
+              example: rks123
     responses:
       200:
         description: Login successful
-      401:
-        description: Invalid credentials
       400:
         description: Bad request
+      401:
+        description: Invalid credentials
       500:
         description: Internal server error
     """
@@ -183,31 +181,41 @@ def login():
 
     try:
         cursor.execute(
-            "SELECT cms_password FROM tbl_login WHERE cms_username = %s",
+            "SELECT cmi_emp_id, cms_password FROM tbl_login WHERE cms_username = %s",
             (username,)
         )
+        user = cursor.fetchone()
 
-        result = cursor.fetchone()
-
-        if not result:
+        if not user:
             return jsonify({"msg": "Invalid credentials"}), 401
 
-        stored_password = result[0]
+        emp_id = user[0]
+        hashed_password = user[1]
 
-        if not stored_password:
-            return jsonify({"msg": "Invalid credentials"}), 401
+        # 🔥 FIX FOR LOCAL + PRODUCTION BOTH
 
-        if bcrypt.checkpw(
+        # If it is string (local DB case)
+        if isinstance(hashed_password, str):
+            hashed_password = hashed_password.encode("utf-8")
+
+        # If it is memoryview (production case)
+        if isinstance(hashed_password, memoryview):
+            hashed_password = hashed_password.tobytes()
+
+        # Now compare passwords
+        if not bcrypt.checkpw(
             password.encode("utf-8"),
-            stored_password.encode("utf-8")
+            hashed_password
         ):
-            access_token = create_access_token(identity=username)
-            return jsonify({
-                "msg": "Login successful",
-                "access_token": access_token
-            }), 200
+            return jsonify({"msg": "Invalid credentials"}), 401
 
-        return jsonify({"msg": "Invalid credentials"}), 401
+        # Create JWT token
+        access_token = create_access_token(identity=str(emp_id))
+
+        return jsonify({
+            "msg": "Login successful",
+            "access_token": access_token
+        }), 200
 
     except Exception as e:
         print("LOGIN ERROR:", e)
@@ -216,6 +224,7 @@ def login():
     finally:
         cursor.close()
         conn.close()
+
 # =====================================================
 # GET MY TASKS
 # =====================================================
