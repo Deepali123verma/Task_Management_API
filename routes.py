@@ -2,23 +2,135 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from config_db import get_db_connection
 import bcrypt
-
+import uuid
 routes = Blueprint('routes', __name__)
 
+# =====================================================
 # HOME ROUTE
-@routes.route('/')
+# =====================================================
+
+@routes.route('/', methods=['GET'])
 def home():
     """
-    Welcome Route
+
     ---
     tags:
       - Home
     responses:
       200:
-        description: Welcome message for Task Management API
+        description: Welcome message
     """
     return jsonify({"message": "Welcome to the Task Management API 🚀"}), 200
 
+
+
+# =====================================================
+# REGISTER ROUTE
+# =====================================================
+@routes.route('/register', methods=['POST'])
+def register():
+    """
+    Register New User
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - cms_username
+            - cms_password
+          properties:
+            cms_username:
+              type: string
+              example: deepali
+            cms_password:
+              type: string
+              example: 123456
+    responses:
+      201:
+        description: User registered successfully
+      400:
+        description: Bad request
+      409:
+        description: Username already exists
+      500:
+        description: Server error
+    """
+
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"msg": "Request body required"}), 400
+
+    username = data.get("cms_username")
+    password = data.get("cms_password")
+
+    if not username or not password:
+        return jsonify({"msg": "Username and password required"}), 400
+
+    conn, cursor = get_db_connection()
+
+    try:
+        cursor.execute(
+            "SELECT 1 FROM tbl_login WHERE cms_username = %s",
+            (username,)
+        )
+        if cursor.fetchone():
+            return jsonify({"msg": "Username already exists"}), 409
+
+        hashed_password = bcrypt.hashpw(
+            password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
+        cursor.execute("""
+            INSERT INTO tbl_login (
+                cmi_emp_id,
+                cms_username,
+                cms_password,
+                cmi_role,
+                cmb_dashboard,
+                cmb_manage_emp,
+                cmb_create_task,
+                cmb_all_task,
+                cmb_requests,
+                cmb_emp_requests,
+                cmb_create_micro_tasks
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            1,
+            username,
+            hashed_password,
+            1,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True
+        ))
+
+        conn.commit()
+        return jsonify({"msg": "User registered successfully"}), 201
+
+    except Exception as e:
+        conn.rollback()
+        print("REGISTER ERROR:", e)
+        return jsonify({"msg": str(e)}), 500
+
+    finally:
+        cursor.close()
+        conn.close()
+
+# =====================================================
+# LOGIN ROUTE
+# =====================================================
 
 @routes.route('/login', methods=['POST'])
 def login():
@@ -41,36 +153,40 @@ def login():
           properties:
             cms_username:
               type: string
-              example: admin
+              example: deepali123
             cms_password:
               type: string
-              example: Admin123
+              example: MyPassword@123
     responses:
       200:
-        description: Successful login
-      400:
-        description: Username and password required
+        description: Login successful
       401:
         description: Invalid credentials
+      400:
+        description: Bad request
       500:
-        description: Server error
+        description: Internal server error
     """
+
     data = request.get_json()
 
-    username = data.get('cms_username')
-    password = data.get('cms_password')
+    if not data:
+        return jsonify({"msg": "Request body required"}), 400
+
+    username = data.get("cms_username")
+    password = data.get("cms_password")
 
     if not username or not password:
-        return jsonify({"msg": "Username and password are required"}), 400
+        return jsonify({"msg": "Username and password required"}), 400
 
     conn, cursor = get_db_connection()
-    if not conn:
-        return jsonify({"msg": "Database connection failed"}), 500
 
     try:
-        # ✅ Fetch only the password column for the given username
-        query = "SELECT cms_password FROM tbl_login WHERE cms_username = %s"
-        cursor.execute(query, (username,))
+        cursor.execute(
+            "SELECT cms_password FROM tbl_login WHERE cms_username = %s",
+            (username,)
+        )
+
         result = cursor.fetchone()
 
         if not result:
@@ -78,31 +194,37 @@ def login():
 
         stored_password = result[0]
 
-        # Handle string vs bytea (PostgreSQL may store as BYTEA)
-        if isinstance(stored_password, str):
-            stored_password = stored_password.encode('utf-8')
-
-        # Check password using bcrypt
-        if bcrypt.checkpw(password.encode('utf-8'), stored_password):
-            access_token = create_access_token(identity=username)
-            return jsonify({"access_token": access_token}), 200
-        else:
+        if not stored_password:
             return jsonify({"msg": "Invalid credentials"}), 401
 
+        if bcrypt.checkpw(
+            password.encode("utf-8"),
+            stored_password.encode("utf-8")
+        ):
+            access_token = create_access_token(identity=username)
+            return jsonify({
+                "msg": "Login successful",
+                "access_token": access_token
+            }), 200
+
+        return jsonify({"msg": "Invalid credentials"}), 401
+
     except Exception as e:
-        return jsonify({"msg": f"Server error: {str(e)}"}), 500
+        print("LOGIN ERROR:", e)
+        return jsonify({"msg": str(e)}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-# MY TASKS ROUTE
+        cursor.close()
+        conn.close()
+# =====================================================
+# GET MY TASKS
+# =====================================================
+
 @routes.route('/my-tasks', methods=['GET'])
 @jwt_required()
-def get_user_tasks_post():
+def get_user_tasks():
     """
-    Get tasks assigned to the logged-in user
+    Get My Tasks
     ---
     tags:
       - Tasks
@@ -110,22 +232,23 @@ def get_user_tasks_post():
       - Bearer: []
     responses:
       200:
-        description: List of tasks assigned to the user
+        description: List of tasks
       401:
-        description: Unauthorized - missing or invalid token
-      404:
-        description: No tasks found for user
-      500:
-        description: Database error
+        description: Unauthorized
     """
-    current_user = get_jwt_identity()  # cms_username
+
+    current_user = get_jwt_identity()
 
     conn, cursor = get_db_connection()
     if not conn:
         return jsonify({"msg": "Database connection failed"}), 500
 
     try:
-        cursor.execute("SELECT cmi_emp_id FROM tbl_login WHERE cms_username = %s", (current_user,))
+        cursor.execute(
+            "SELECT cmi_emp_id FROM tbl_login WHERE cms_username = %s",
+            (current_user,)
+        )
+
         emp_result = cursor.fetchone()
 
         if not emp_result:
@@ -138,205 +261,170 @@ def get_user_tasks_post():
             FROM tbl_task
             WHERE cmi_allocated_to = %s
         """, (emp_id,))
+
         tasks = cursor.fetchall()
 
-        if not tasks:
-            return jsonify({"msg": "No tasks found for user"}), 404
+        task_list = [
+            {
+                "task_id": t[0],
+                "task_desc": t[1],
+                "task_title": t[2]
+            }
+            for t in tasks
+        ]
 
-        task_list = [{"task_id": t[0], "task_desc": t[1], "task_title": t[2]} for t in tasks]
         return jsonify({"tasks": task_list}), 200
 
     except Exception as e:
-        return jsonify({"msg": f"Database error: {str(e)}"}), 500
+        print("TASK ERROR:", e)
+        return jsonify({"msg": "Internal server error"}), 500
+
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
 
 
-# CREATE TASK ROUTE
+# =====================================================
+# CREATE TASK
+# =====================================================
+
 @routes.route('/create-task', methods=['POST'])
 @jwt_required()
 def create_task():
     """
-    Create a new task
+    Create Task
     ---
     tags:
       - Tasks
-    consumes:
-      - application/json
     security:
       - Bearer: []
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - task_title
-            - task_desc
-            - allocated_to
-            - task_deadline
-          properties:
-            task_title:
-              type: string
-              example: "Backend API"
-            task_desc:
-              type: string
-              example: "Complete backend API integration"
-            allocated_to:
-              type: integer
-              example: 101
-            task_deadline:
-              type: string
-              example: "2025-09-15 18:00:00"
-    responses:
-      201:
-        description: Task created successfully
-      400:
-        description: Missing fields
-      500:
-        description: Database error
     """
+
     data = request.get_json()
+
     task_title = data.get("task_title")
     task_desc = data.get("task_desc")
     allocated_to = data.get("allocated_to")
-    task_deadline = data.get("task_deadline")  # new line
+    task_deadline = data.get("task_deadline")
 
     if not (task_title and task_desc and allocated_to and task_deadline):
         return jsonify({"msg": "All fields are required"}), 400
 
     conn, cursor = get_db_connection()
-    if not conn:
-        return jsonify({"msg": "Database connection failed"}), 500
 
     try:
         cursor.execute("""
-            INSERT INTO tbl_task (cms_task_title, cms_task_desc, cmi_allocated_to, cmd_task_deadline)
-            VALUES (%s, %s, %s, %s) RETURNING cmi_task_id
+            INSERT INTO tbl_task
+            (cms_task_title, cms_task_desc, cmi_allocated_to, cmd_task_deadline)
+            VALUES (%s, %s, %s, %s)
+            RETURNING cmi_task_id
         """, (task_title, task_desc, allocated_to, task_deadline))
+
         task_id = cursor.fetchone()[0]
         conn.commit()
+
         return jsonify({"msg": "Task created successfully", "task_id": task_id}), 201
+
     except Exception as e:
-        return jsonify({"msg": f"Database error: {str(e)}"}), 500
+        print("CREATE ERROR:", e)
+        return jsonify({"msg": "Internal server error"}), 500
+
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
 
 
-# UPDATE TASK ROUTE
+# =====================================================
+# UPDATE TASK
+# =====================================================
+
 @routes.route('/update-task/<int:task_id>', methods=['PUT'])
 @jwt_required()
 def update_task(task_id):
     """
-    Update an existing task
+    Update Task
     ---
     tags:
       - Tasks
-    consumes:
-      - application/json
     security:
       - Bearer: []
-    parameters:
-      - in: path
-        name: task_id
-        required: true
-        type: integer
-      - in: body
-        name: body
-        schema:
-          type: object
-          properties:
-            task_title:
-              type: string
-            task_desc:
-              type: string
-            allocated_to:
-              type: integer
-    responses:
-      200:
-        description: Task updated successfully
-      404:
-        description: Task not found
-      500:
-        description: Database error
     """
+
     data = request.get_json()
     task_title = data.get("task_title")
     task_desc = data.get("task_desc")
     allocated_to = data.get("allocated_to")
 
     conn, cursor = get_db_connection()
-    if not conn:
-        return jsonify({"msg": "Database connection failed"}), 500
 
     try:
-        cursor.execute("SELECT cmi_task_id FROM tbl_task WHERE cmi_task_id = %s", (task_id,))
+        cursor.execute(
+            "SELECT 1 FROM tbl_task WHERE cmi_task_id = %s",
+            (task_id,)
+        )
+
         if not cursor.fetchone():
             return jsonify({"msg": "Task not found"}), 404
 
         cursor.execute("""
             UPDATE tbl_task
-            SET cms_task_title = %s, cms_task_desc = %s, cmi_allocated_to = %s
+            SET cms_task_title = %s,
+                cms_task_desc = %s,
+                cmi_allocated_to = %s
             WHERE cmi_task_id = %s
         """, (task_title, task_desc, allocated_to, task_id))
+
         conn.commit()
         return jsonify({"msg": "Task updated successfully"}), 200
+
     except Exception as e:
-        return jsonify({"msg": f"Database error: {str(e)}"}), 500
+        print("UPDATE ERROR:", e)
+        return jsonify({"msg": "Internal server error"}), 500
+
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
 
 
-# DELETE TASK ROUTE
+# =====================================================
+# DELETE TASK
+# =====================================================
+
 @routes.route('/delete-task/<int:task_id>', methods=['DELETE'])
 @jwt_required()
 def delete_task(task_id):
     """
-    Delete a task
+    Delete Task
     ---
     tags:
       - Tasks
     security:
       - Bearer: []
-    parameters:
-      - in: path
-        name: task_id
-        required: true
-        type: integer
-    responses:
-      200:
-        description: Task deleted successfully
-      404:
-        description: Task not found
-      500:
-        description: Database error
     """
+
     conn, cursor = get_db_connection()
-    if not conn:
-        return jsonify({"msg": "Database connection failed"}), 500
 
     try:
-        cursor.execute("SELECT cmi_task_id FROM tbl_task WHERE cmi_task_id = %s", (task_id,))
+        cursor.execute(
+            "SELECT 1 FROM tbl_task WHERE cmi_task_id = %s",
+            (task_id,)
+        )
+
         if not cursor.fetchone():
             return jsonify({"msg": "Task not found"}), 404
 
-        cursor.execute("DELETE FROM tbl_task WHERE cmi_task_id = %s", (task_id,))
+        cursor.execute(
+            "DELETE FROM tbl_task WHERE cmi_task_id = %s",
+            (task_id,)
+        )
+
         conn.commit()
         return jsonify({"msg": "Task deleted successfully"}), 200
+
     except Exception as e:
-        return jsonify({"msg": f"Database error: {str(e)}"}), 500
+        print("DELETE ERROR:", e)
+        return jsonify({"msg": "Internal server error"}), 500
+
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
